@@ -17,7 +17,7 @@ A Python tool to scrape metadata from browser extension stores (Chrome Web Store
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/extension-scout.git
+git clone https://github.com/CowboyVang/extension-scout.git
 cd extension-scout
 ```
 
