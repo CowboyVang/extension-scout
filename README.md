@@ -1,12 +1,15 @@
 # Extension Scout
 
-A Python tool to scrape metadata from browser extension stores (Chrome Web Store and Microsoft Edge Add-ons) using extension IDs.
+A Python tool to scrape metadata from browser extension stores (Chrome Web Store, Microsoft Edge Add-ons, and Firefox Add-ons) using extension IDs.
 
-> **Note:** This project was vibe coded with [Claude Code](https://claude.ai/code).
+> **Note:** Built with assistance from [Claude Code](https://claude.ai/code).
 
 ## Features
 
-- Scrapes extension/theme metadata from Chrome Web Store and Edge Add-ons
+- Scrapes extension/theme metadata from Chrome Web Store, Edge Add-ons, and Firefox Add-ons
+- Automatic store detection based on ID format:
+  - Chrome/Edge IDs (32 lowercase letters): tries Chrome first, then Edge
+  - Other formats (slugs like `ublock-origin`): tries Firefox
 - Extracts: name, type (Extension/Theme), developer, category, user count, rating, rating count, and overview
 - Resume capability - restart from where you left off
 - Configurable delays to avoid rate limiting
@@ -46,6 +49,7 @@ playwright install chromium
 extension_id
 cjpalhdlnbpafiamejdnhcphjbkeiagm
 ofpnmcalabcbjgholdjcjblkibolbppb
+ublock-origin
 ```
 
 2. Run the scraper:
@@ -81,6 +85,15 @@ python extension_scout.py --delay-min 2 --delay-max 5
 python extension_scout.py --retries 5
 ```
 
+## Extension ID Formats
+
+| Store | ID Format | Example |
+|-------|-----------|---------|
+| Chrome/Edge | 32 lowercase letters | `cjpalhdlnbpafiamejdnhcphjbkeiagm` |
+| Firefox | Slug or GUID | `ublock-origin`, `{extension-guid}` |
+
+The scraper automatically detects the format and routes to the appropriate store(s).
+
 ## Output Format
 
 The output CSV contains the following columns:
@@ -88,24 +101,26 @@ The output CSV contains the following columns:
 | Column | Description |
 |--------|-------------|
 | extension_id | The input extension ID |
-| browser | Store where found (chrome/edge) |
+| browser | Store where found (chrome/edge/firefox) |
 | name | Extension or theme name |
 | type | "Extension" or "Theme" |
 | developer | Developer/publisher name |
 | category | Store category |
-| user_count | Number of users |
+| user_count | Number of users (normalized to plain number) |
 | rating | Average rating (out of 5) |
-| rating_count | Number of ratings |
+| rating_count | Number of ratings (normalized to plain number) |
 | overview | First 50 words of description |
+| link | Direct URL to extension page |
 | status | Result status (success, not_found, etc.) |
 
 ## How It Works
 
-1. For each extension ID, the scraper first tries Chrome Web Store
-2. If not found in Chrome, it tries Microsoft Edge Add-ons
-3. Uses Playwright (headless Chromium) to render JavaScript-heavy store pages
-4. Parses page content to extract metadata
-5. Results are written incrementally, enabling resume on interruption
+1. For each extension ID, the scraper checks the ID format
+2. **Chrome/Edge IDs** (32 lowercase letters): tries Chrome Web Store first, then Edge Add-ons
+3. **Other formats**: tries Firefox Add-ons API
+4. Chrome/Edge use Playwright (headless Chromium) to render JavaScript-heavy pages
+5. Firefox uses the public REST API (faster, no browser needed)
+6. Results are written incrementally, enabling resume on interruption
 
 ## Resume Capability
 
@@ -124,7 +139,8 @@ extension-scout/
 │   ├── __init__.py
 │   ├── base.py             # Base scraper class and data types
 │   ├── chrome.py           # Chrome Web Store scraper
-│   └── edge.py             # Edge Add-ons scraper
+│   ├── edge.py             # Edge Add-ons scraper
+│   └── firefox.py          # Firefox Add-ons scraper
 ├── utils/
 │   ├── __init__.py
 │   └── csv_handler.py      # CSV I/O with resume support

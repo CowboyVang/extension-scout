@@ -1,7 +1,7 @@
 import random
 import time
 
-from .base import BaseScraper, ExtensionMetadata
+from .base import BaseScraper, ExtensionMetadata, normalize_count, clean_text
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -50,6 +50,7 @@ class ChromeScraper(BaseScraper):
         self._ensure_browser()
         url = self.BASE_URL.format(extension_id=extension_id)
         metadata = ExtensionMetadata(extension_id=extension_id, browser=self.browser_name)
+        metadata.link = url
 
         for attempt in range(self.max_retries):
             context = None
@@ -144,10 +145,12 @@ class ChromeScraper(BaseScraper):
                     line = line.strip()
                     # User count: "3,000,000 users"
                     if 'users' in line.lower() and not metadata.user_count:
-                        metadata.user_count = line.replace(' users', '').replace(' user', '').strip()
+                        raw_count = line.replace(' users', '').replace(' user', '').strip()
+                        metadata.user_count = normalize_count(raw_count)
                     # Rating count: "30.3K ratings"
                     if 'ratings' in line.lower() and not metadata.rating_count:
-                        metadata.rating_count = line.replace(' ratings', '').strip()
+                        raw_count = line.replace(' ratings', '').strip()
+                        metadata.rating_count = normalize_count(raw_count)
                     # Rating score: a line like "4.9" that appears before "ratings"
                     if not metadata.rating and i + 1 < len(lines):
                         next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
@@ -172,7 +175,7 @@ class ChromeScraper(BaseScraper):
                     overview_lines = [l.strip() for l in overview_text.split('\n') if l.strip()]
                     combined = ' '.join(overview_lines[:10])  # Combine first several lines
                     if combined:
-                        metadata.overview = get_first_n_words(combined, 50)
+                        metadata.overview = clean_text(get_first_n_words(combined, 50))
 
                 if metadata.name:
                     metadata.status = "success"

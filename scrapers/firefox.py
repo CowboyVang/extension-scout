@@ -3,13 +3,22 @@ import time
 
 import requests
 
-from .base import BaseScraper, ExtensionMetadata
+from .base import BaseScraper, ExtensionMetadata, clean_text
+
+
+def get_first_n_words(text: str, n: int = 50) -> str:
+    """Extract the first n words from text."""
+    if not text:
+        return ""
+    words = text.split()
+    return " ".join(words[:n])
 
 
 class FirefoxScraper(BaseScraper):
     """Scraper for Firefox Add-ons using the public API."""
 
     API_URL = "https://addons.mozilla.org/api/v5/addons/addon/{extension_id}/"
+    PAGE_URL = "https://addons.mozilla.org/en-US/firefox/addon/{extension_id}/"
 
     USER_AGENTS = [
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -25,10 +34,21 @@ class FirefoxScraper(BaseScraper):
     def browser_name(self) -> str:
         return "firefox"
 
+    def _get_localized_value(self, data, default: str = "") -> str:
+        """Extract localized value, preferring en-US."""
+        if not data:
+            return default
+        if isinstance(data, str):
+            return data
+        if isinstance(data, dict):
+            return data.get("en-US") or next(iter(data.values()), default)
+        return default
+
     def scrape(self, extension_id: str) -> ExtensionMetadata:
         """Scrape Firefox extension metadata via API."""
         url = self.API_URL.format(extension_id=extension_id)
         metadata = ExtensionMetadata(extension_id=extension_id, browser=self.browser_name)
+        metadata.link = self.PAGE_URL.format(extension_id=extension_id)
 
         for attempt in range(self.max_retries):
             try:
@@ -51,21 +71,53 @@ class FirefoxScraper(BaseScraper):
                 response.raise_for_status()
                 data = response.json()
 
-                metadata.name = data.get("name", {}).get("en-US") or data.get("name", "")
-                if isinstance(metadata.name, dict):
-                    metadata.name = list(metadata.name.values())[0] if metadata.name else ""
+                # Name
+                metadata.name = self._get_localized_value(data.get("name"))
 
-                summary = data.get("summary", {})
-                if isinstance(summary, dict):
-                    metadata.description = summary.get("en-US") or list(summary.values())[0] if summary else ""
+                # Type (extension, theme, etc.)
+                addon_type = data.get("type", "")
+                if addon_type == "extension":
+                    metadata.item_type = "Extension"
+                elif addon_type in ("statictheme", "theme"):
+                    metadata.item_type = "Theme"
                 else:
-                    metadata.description = str(summary) if summary else ""
+                    metadata.item_type = addon_type.capitalize() if addon_type else None
 
+                # Developer
+                authors = data.get("authors", [])
+                if authors:
+                    metadata.developer = authors[0].get("name", "")
+
+                # Category
+                categories = data.get("categories")
+                if categories:
+                    if isinstance(categories, dict):
+                        firefox_cats = categories.get("firefox", [])
+                        if firefox_cats:
+                            metadata.category = firefox_cats[0]
+                    elif isinstance(categories, list) and categories:
+                        metadata.category = categories[0]
+
+                # User count (average daily users)
+                avg_daily = data.get("average_daily_users")
+                if avg_daily:
+                    metadata.user_count = str(avg_daily)
+
+                # Rating
                 ratings = data.get("ratings", {})
                 if ratings:
-                    metadata.rating = ratings.get("average")
+                    avg_rating = ratings.get("average")
+                    if avg_rating:
+                        metadata.rating = str(round(avg_rating, 1))
+                    rating_count = ratings.get("count")
+                    if rating_count:
+                        metadata.rating_count = str(rating_count)
 
-                metadata.user_count = data.get("average_daily_users")
+                # Overview (summary/description)
+                summary = self._get_localized_value(data.get("summary"))
+                if summary:
+                    metadata.overview = clean_text(get_first_n_words(summary, 50))
+
                 metadata.status = "success"
                 return metadata
 

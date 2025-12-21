@@ -24,6 +24,7 @@ class CSVHandler:
         "rating",
         "rating_count",
         "overview",
+        "link",
         "status",
     ]
 

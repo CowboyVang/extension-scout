@@ -2,7 +2,7 @@ import random
 import re
 import time
 
-from .base import BaseScraper, ExtensionMetadata
+from .base import BaseScraper, ExtensionMetadata, normalize_count, clean_text
 
 try:
     from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
@@ -51,6 +51,7 @@ class EdgeScraper(BaseScraper):
         self._ensure_browser()
         url = self.BASE_URL.format(extension_id=extension_id)
         metadata = ExtensionMetadata(extension_id=extension_id, browser=self.browser_name)
+        metadata.link = url
 
         for attempt in range(self.max_retries):
             context = None
@@ -116,12 +117,12 @@ class EdgeScraper(BaseScraper):
                     # User count: "2,800,000+ Users"
                     if 'Users' in line and not metadata.user_count:
                         user_str = line.replace(' Users', '').replace('‪', '').replace('‬', '').strip()
-                        metadata.user_count = user_str
+                        metadata.user_count = normalize_count(user_str)
                     # Rating count: "(1.3K)" - appears in parentheses after developer
                     if line.startswith('(') and line.endswith(')') and not metadata.rating_count:
                         rating_count = line[1:-1]  # Remove parentheses
                         if rating_count:
-                            metadata.rating_count = rating_count
+                            metadata.rating_count = normalize_count(rating_count)
 
                 # Try to get rating from aria-label or other attributes in HTML
                 html_content = page.content()
@@ -154,7 +155,7 @@ class EdgeScraper(BaseScraper):
 
                     desc_text = desc_text.strip()
                     if desc_text:
-                        metadata.overview = get_first_n_words(desc_text, 50)
+                        metadata.overview = clean_text(get_first_n_words(desc_text, 50))
 
                 if metadata.name:
                     metadata.status = "success"

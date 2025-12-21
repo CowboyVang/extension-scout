@@ -2,19 +2,21 @@
 """
 Extension Scout - Browser Extension Metadata Scraper
 
-Scrapes extension names and metadata from Chrome and Edge stores
+Scrapes extension names and metadata from Chrome, Edge, and Firefox stores
 based on extension IDs provided in a CSV file.
 
-For each extension ID, tries Chrome first, then Edge if not found.
+For Chrome/Edge IDs (32 lowercase hex chars): tries Chrome first, then Edge.
+For other ID formats: tries Firefox.
 
 Usage:
     python extension_scout.py [--input INPUT_FILE] [--output OUTPUT_FILE]
 """
 
 import argparse
+import re
 import sys
 
-from scrapers import ChromeScraper, EdgeScraper
+from scrapers import ChromeScraper, EdgeScraper, FirefoxScraper
 from utils import CSVHandler
 
 # === CONFIGURATION ===
@@ -24,10 +26,18 @@ MAX_RETRIES = 3          # Retry attempts for failed requests
 INPUT_FILE = "input.csv"
 OUTPUT_FILE = "output.csv"
 
+# Chrome/Edge extension IDs are 32 lowercase hex characters
+CHROME_EDGE_PATTERN = re.compile(r'^[a-z]{32}$')
+
+
+def is_chrome_edge_id(extension_id: str) -> bool:
+    """Check if the extension ID matches Chrome/Edge format (32 lowercase letters)."""
+    return bool(CHROME_EDGE_PATTERN.match(extension_id))
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Scrape browser extension metadata from Chrome and Edge stores."
+        description="Scrape browser extension metadata from Chrome, Edge, and Firefox stores."
     )
     parser.add_argument(
         "--input", "-i",
@@ -66,8 +76,8 @@ def main():
         print(f"Error: Input file '{args.input}' not found.")
         print(f"\nCreate a CSV file with extension IDs in the first column:")
         print("  extension_id")
-        print("  ofpnmcalabcbjgholdjcjblkibolbppb")
-        print("  abc123def456...")
+        print("  ofpnmcalabcbjgholdjcjblkibolbppb  (Chrome/Edge)")
+        print("  ublock-origin                     (Firefox)")
         sys.exit(1)
     except ValueError as e:
         print(f"Error: {e}")
@@ -82,7 +92,7 @@ def main():
     print(f"Already processed: {processed}")
     print(f"Remaining: {total - processed}")
     print(f"Delay: {args.delay_min}-{args.delay_max}s between requests")
-    print(f"Strategy: Try Chrome first, then Edge if not found")
+    print(f"Strategy: Chrome/Edge IDs -> Chrome then Edge; other IDs -> Firefox")
     print("-" * 50)
 
     if processed == total:
@@ -91,6 +101,7 @@ def main():
 
     chrome_scraper = None
     edge_scraper = None
+    firefox_scraper = None
 
     try:
         # Create Chrome scraper first (it will own the browser)
@@ -110,27 +121,43 @@ def main():
             browser=browser
         )
 
+        # Firefox scraper uses requests (no browser needed)
+        firefox_scraper = FirefoxScraper(
+            delay_min=args.delay_min,
+            delay_max=args.delay_max,
+            max_retries=args.retries
+        )
+
         for i, ext in enumerate(csv_handler.get_pending_extensions(), start=processed + 1):
             print(f"\n[{i}/{total}] {ext.extension_id}")
 
-            # Try Chrome first
-            print(f"  Trying Chrome...", end=" ", flush=True)
-            result = chrome_scraper.scrape(ext.extension_id)
+            if is_chrome_edge_id(ext.extension_id):
+                # Chrome/Edge ID pattern - try Chrome first, then Edge
+                print(f"  Trying Chrome...", end=" ", flush=True)
+                result = chrome_scraper.scrape(ext.extension_id)
 
-            if result.status != "success":
-                print(f"not found")
-                # Try Edge if Chrome failed
-                print(f"  Trying Edge...", end=" ", flush=True)
-                result = edge_scraper.scrape(ext.extension_id)
+                if result.status != "success":
+                    print(f"not found")
+                    print(f"  Trying Edge...", end=" ", flush=True)
+                    result = edge_scraper.scrape(ext.extension_id)
+
+                    if result.status != "success":
+                        print(f"not found")
+                        result.status = "not_found_in_any_store"
+                    else:
+                        print(f"found")
+                else:
+                    print(f"found")
+            else:
+                # Non-Chrome/Edge pattern - try Firefox
+                print(f"  Trying Firefox...", end=" ", flush=True)
+                result = firefox_scraper.scrape(ext.extension_id)
 
                 if result.status != "success":
                     print(f"not found")
                     result.status = "not_found_in_any_store"
                 else:
                     print(f"found")
-
-            else:
-                print(f"found")
 
             # Display all columns
             print(f"  Name:        {result.name or '[empty]'}")
@@ -142,6 +169,7 @@ def main():
             print(f"  RatingCount: {result.rating_count or '[empty]'}")
             overview_display = result.overview[:50] + "..." if result.overview and len(result.overview) > 50 else result.overview
             print(f"  Overview:    {overview_display or '[empty]'}")
+            print(f"  Link:        {result.link or '[empty]'}")
             print(f"  Status:      {result.status}")
 
             csv_handler.write_result(result.to_dict())
@@ -155,6 +183,8 @@ def main():
             chrome_scraper.close()
         if edge_scraper:
             edge_scraper.close()
+        if firefox_scraper:
+            firefox_scraper.close()
 
     final_processed = csv_handler.count_processed()
     print("-" * 50)
