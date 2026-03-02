@@ -70,6 +70,7 @@ Options:
   --delay-min SECONDS   Minimum delay between requests (default: 5)
   --delay-max SECONDS   Maximum delay between requests (default: 10)
   --retries COUNT       Maximum retry attempts (default: 3)
+  -v, --verbose         Show metadata details for each extension
 ```
 
 ### Examples
@@ -83,6 +84,9 @@ python extension_scout.py --delay-min 2 --delay-max 5
 
 # More retries for unstable connections
 python extension_scout.py --retries 5
+
+# Verbose output (see metadata details per extension)
+python extension_scout.py -v
 ```
 
 ## Extension ID Formats
@@ -144,9 +148,21 @@ extension-scout/
 ├── utils/
 │   ├── __init__.py
 │   └── csv_handler.py      # CSV I/O with resume support
+├── tests/
+│   ├── test_csv_handler.py # CSV handler tests
+│   └── test_utils.py       # Utility function tests
+├── pyproject.toml          # Project metadata and dependencies
 ├── requirements.txt
 ├── sample_input.csv        # Example input file
 └── README.md
+```
+
+## Testing
+
+Run the test suite with pytest:
+
+```bash
+pytest tests/
 ```
 
 ## License

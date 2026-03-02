@@ -1,17 +1,12 @@
+import logging
 import random
 import time
 
 import requests
 
-from .base import BaseScraper, ExtensionMetadata, clean_text
+from .base import BaseScraper, ExtensionMetadata, clean_text, get_first_n_words
 
-
-def get_first_n_words(text: str, n: int = 50) -> str:
-    """Extract the first n words from text."""
-    if not text:
-        return ""
-    words = text.split()
-    return " ".join(words[:n])
+logger = logging.getLogger(__name__)
 
 
 class FirefoxScraper(BaseScraper):
@@ -64,7 +59,7 @@ class FirefoxScraper(BaseScraper):
 
                 if response.status_code == 429:
                     wait_time = (attempt + 1) * 30
-                    print(f"Rate limited. Waiting {wait_time}s...")
+                    logger.warning("Rate limited. Waiting %ds...", wait_time)
                     time.sleep(wait_time)
                     continue
 
